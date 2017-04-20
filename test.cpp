@@ -32,8 +32,21 @@ boost::shared_ptr<pcl::visualization::PCLVisualizer> simpleVis (pcl::PointCloud<
 
 int main( int argc, char** argv )  
 {  
+  pcl::PCDWriter writer;
   
   boost::shared_ptr<pcl::visualization::PCLVisualizer> pclvisualizer(new pcl::visualization::PCLVisualizer ("3D Viewer"));
+  pclvisualizer->initCameraParameters ();//Initialize camera parameters with some default values. 
+  //pclvisualizer->addCoordinateSystem(1.0);
+    
+  int v1(0);
+  pclvisualizer->createViewPort(0.0,0.0,0.5,1.0,v1);
+  pclvisualizer->setBackgroundColor(150,150,150,v1);
+  pclvisualizer->addCoordinateSystem(1.0,v1);
+  int v2(1);
+  pclvisualizer->createViewPort(0.5,0.0,1.0,1.0,v2);
+  pclvisualizer->setBackgroundColor(150,150,150,v2);
+  pclvisualizer->addCoordinateSystem(1.0,v2);
+  
   //pcl::visualization::CloudViewer viewer("cloud");//点云显示
   
   pcl::PointCloud<pcl::PointXYZ>::Ptr pPointCloud(new pcl::PointCloud<pcl::PointXYZ>);
@@ -55,7 +68,7 @@ int main( int argc, char** argv )
   while(key != 27)
   {
     reader.ReadKinect();
-    reader.ShowDepthAndImg();
+    //reader.ShowDepthAndImg();
     pPointCloud = reader.ToPointCloud();	    
     
     //点云分割
@@ -92,32 +105,70 @@ int main( int argc, char** argv )
     extract.setNegative(false);//是否显示物体
     extract.filter(*cloud_plane);
     //projection
-    pcl::PointCloud<pcl::PointXYZ>::Ptr projectedPoints(new pcl::PointCloud<pcl::PointXYZ>());
+    
+    /*
+  pcl::search::KdTree<pcl::PointXYZ>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZ>);
+  tree->setInputCloud (cloud_filtered);
+*/
+  
+  std::vector<pcl::PointIndices> cluster_indices;//存放内点索引的容器
+  pcl::EuclideanClusterExtraction<pcl::PointXYZ> ec;
+  ec.setClusterTolerance (0.03); // 3cm
+  ec.setMinClusterSize (100);
+  ec.setMaxClusterSize (25000);
+  ec.setSearchMethod (tree);
+  ec.setInputCloud (cloud_no_plane);
+  ec.extract (cluster_indices);
+  
+
+  pclvisualizer->removeAllPointClouds(0);//viewport = 0
+  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color_red(cloud_plane, 255, 0, 0);//红色地面点云
+  pclvisualizer->addPointCloud<pcl::PointXYZ> (cloud_plane, single_color_red, "plane");//添加红色地面点云
+
+  
+  unsigned int j = 0;
+  for (std::vector<pcl::PointIndices>::const_iterator it = cluster_indices.begin (); it != cluster_indices.end (); ++it)
+  {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_cluster (new pcl::PointCloud<pcl::PointXYZ>);
+    for (std::vector<int>::const_iterator pit = it->indices.begin (); pit != it->indices.end (); ++pit)
+      cloud_cluster->points.push_back (cloud_no_plane->points[*pit]); //*
+    cloud_cluster->width = cloud_cluster->points.size ();
+    cloud_cluster->height = 1;
+    cloud_cluster->is_dense = true;
+    
+    //投影到地面上
+    pcl::PointCloud<pcl::PointXYZ>::Ptr projected_cluster(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::ProjectInliers<pcl::PointXYZ> projection;
     projection.setModelType(pcl::SACMODEL_PLANE);
-    projection.setInputCloud(cloud_no_plane);
+    projection.setInputCloud(cloud_cluster);
     
     projection.setModelCoefficients(coefficients_plane);
     
-    projection.filter(*projectedPoints);
-    //viewer.showCloud(pPointCloud); 
+    projection.filter(*projected_cluster);
+    
+    
+    
+    //显示和存储
+    std::cout << "PointCloud representing the Cluster: " << cloud_cluster->points.size () << " data points." << std::endl;
+    std::stringstream ss1,ss2;
+    ss1 << "cloud_cluster_" << j; //<< ".pcd";
+    ss2 << "cloud_projected_cluster_" << j;
+    
+    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color_cluster(cloud_cluster, j*100%256, j*200%256, (j+200)*300%256);//设置地面上物体点云为纯绿色
+    pclvisualizer->addPointCloud<pcl::PointXYZ> (cloud_cluster, single_color_cluster, ss1.str(),v1);//添加绿色点云并设置ID号为“no_plane”
+    pclvisualizer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, ss1.str(),v1);//地面上物体点云设置大小为2
+
+    pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color_projected_cluster(projected_cluster, j*100%256, j*200%256, (j+200)*300%256);//设置地面上物体点云为纯绿色
+    pclvisualizer->addPointCloud<pcl::PointXYZ> (projected_cluster, single_color_projected_cluster, ss2.str(),v2);//添加绿色点云并设置ID号为“no_plane”
+    pclvisualizer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 2, ss2.str(),v2);//地面上物体点云设置大小为2
+
+    //writer.write<pcl::PointXYZ> (ss.str (), *cloud_cluster, false); //*
+    //it->drawTBoundingBox(pclvisualizer,j);
+    j++;
+  }
+    pclvisualizer->spinOnce(100);//这一句必须得加，以更新使得视窗可以读取数据和显示
+    
     /*
-     * updatePointCloud函数定义
-     * 
-
-template<typename PointT >
-bool pcl::visualization::PCLVisualizer::updatePointCloud 	( 	const typename pcl::PointCloud< PointT >::ConstPtr &  	cloud,
-		const PointCloudColorHandler< PointT > &  	color_handler,
-		const std::string &  	id = "cloud" 
-	) 		
-
-Updates the XYZ data for an existing cloud object id on screen.
-
-Parameters
-    [in]	cloud	the input point cloud dataset
-    [in]	color_handler	the color handler to use
-    [in]	id	the point cloud object id to update (default: cloud) 
-    */
     if(times == 0)//只添加一次点云，以后只需要更新即可
     {
       times = 1;
@@ -129,8 +180,9 @@ Parameters
     //pclvisualizer->spinOnce (100);
     pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color_red(cloud_plane, 255, 0, 0);
     pclvisualizer->updatePointCloud<pcl::PointXYZ> (cloud_plane, single_color_red, "plane");
-    pclvisualizer->spinOnce(100);//这一句必须得加，以使得视窗可以读取数据和显示
+    pclvisualizer->spinOnce(100);//这一句必须得加，以更新使得视窗可以读取数据和显示
     key=cvWaitKey(20);//必须得加上此句，来让深度图和彩图顺利显示
+    */
   }
   reader.StopRead();
   

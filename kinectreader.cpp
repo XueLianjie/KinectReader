@@ -28,15 +28,15 @@ Kinectreader::Kinectreader()
     zmin = 1.0;//Config::get<double> ("z_min");
     zmax = 2.5;//Config::get<double> ("z_max");
     voxel_grid = 0.02;//Config::get<double> ("grid_size");
-    MeanK = 20;//Config::get<int> ("MeanK");
-    outlier_threshold = 1.0;//Config::get<double> ("outlier_threshold");
+    MeanK = 50;//Config::get<int> ("MeanK");
+    outlier_threshold = 0.6;//Config::get<double> ("outlier_threshold");
 }
 
 void Kinectreader::Init()//初始化函数，完成reader的初始配置设置
 {
   //打开两个窗口 
-  cvNamedWindow("depth",1);  
-  cvNamedWindow("image",1);
+//  cvNamedWindow("depth",1);  
+//  cvNamedWindow("image",1);
   //context 初始化，这样所有的OpenNI相关的模块都被读取分析，直到shutdown函数被调用
   result = context.Init();   
   CheckOpenNIError( result, "initialize context" );    
